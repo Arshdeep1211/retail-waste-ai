@@ -1,0 +1,6 @@
+sku,name,category,case_pack,shelf_life_days_default
+1001,Milk,Dairy,10,7
+1002,Yogurt,Dairy,12,10
+1003,Tomatoes,Produce,20,5
+1004,Cheese,Dairy,8,20
+1005,Bananas,Produce,18,6
