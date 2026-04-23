@@ -320,10 +320,12 @@ def safe_read(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def build_button(label: str, key: str, active: bool = False):
-    cls = "nav-btn-active" if active else "nav-btn"
-    with st.container():
-        st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
-        if st.button(label, key=key, use_container_width=True):
+    if st.button(
+        label,
+        key=key,
+        use_container_width=True,
+        type="primary" if active else "secondary"
+    ):
             st.session_state.nav = key
         st.markdown('</div>', unsafe_allow_html=True)
 
