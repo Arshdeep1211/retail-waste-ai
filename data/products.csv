@@ -1,12 +1,5 @@
-sku,name,category,case_pack,shelf_life_days_default
-1001,Milk,Dairy,10,7
-1002,Yogurt,Dairy,12,10
-1003,Tomatoes,Produce,20,5
-1004,Cheese,Dairy,8,20
-1005,Bananas,Produce,18,6
 sku,name,category,case_pack,shelf_life_days
-1001,Milk,Dairy,12,5
-1002,Yogurt,Dairy,12,7
-1003,Chicken,Meat,6,3
-1004,Bread,Bakery,10,2
-1005,Juice,Drinks,24,30
+bread,Bread,Bakery,10,2
+meat,Meat,Meat,6,3
+milk,Milk,Dairy,12,5
+yogurt,Yogurt,Dairy,12,7
