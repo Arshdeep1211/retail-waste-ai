@@ -767,7 +767,12 @@ with main_col:
         # BOTTOM TABLE
         st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
+
+      st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
+
 if not risk.empty:
+
     st.markdown(
         f"""
         <div class="alert-box alert-good">
@@ -776,19 +781,32 @@ if not risk.empty:
         """,
         unsafe_allow_html=True
     )
-if not risk.empty:
-    if not risk.empty:
     items = risk.copy()
     items["store"] = f"Store {selected_store}"
     items["predicted_demand"] = items["pred_units"].astype(str) + " / day"
     items["risk_badge"] = items["risk_level"]
-            items["action"] = np.where(items["risk_level"] == "HIGH", "Promote / Discount",
-                               np.where(items["risk_level"] == "MEDIUM", "Monitor", "No Action"))
-            show = items[["name", "category", "store", "stock_on_hand", "predicted_demand", "days_left", "risk_badge", "action"]].copy()
-            show.columns = ["Item", "Category", "Store", "Stock On Hand", "Predicted Demand", "Days Left", "Risk Level", "Action"]
-            st.dataframe(show, use_container_width=True, hide_index=True)
-        else:
-            st.info("No items available.")
+
+    items["action"] = np.where(
+        items["risk_level"] == "HIGH", "Promote / Discount",
+        np.where(items["risk_level"] == "MEDIUM", "Monitor", "No Action")
+    )
+
+    show = items[[
+        "name", "category", "store", "stock_on_hand",
+        "predicted_demand", "days_left", "risk_badge", "action"
+    ]]
+
+    show.columns = [
+        "Item", "Category", "Store", "Stock On Hand",
+        "Predicted Demand", "Days Left", "Risk Level", "Action"
+    ]
+
+    st.dataframe(show, use_container_width=True, hide_index=True)
+
+else:
+    st.info("No items available.")
+
+st.markdown('</div>', unsafe_allow_html=True)      st.info("No items available.")
         st.markdown('</div>', unsafe_allow_html=True)
     elif st.session_state.nav == "Upload Data":
         st.markdown('<div class="card">', unsafe_allow_html=True)
