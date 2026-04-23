@@ -1,5 +1,7 @@
 store_id,sku,stock_on_hand
-milk,20
-yogurt,15
-meat,10
-bread,25
+1,bread,25
+1,meat,10
+1,milk,20
+1,yogurt,15
+2,bread,30
+2,milk,18
