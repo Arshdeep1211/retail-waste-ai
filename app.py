@@ -777,10 +777,11 @@ if not risk.empty:
         unsafe_allow_html=True
     )
 if not risk.empty:
+    if not risk.empty:
     items = risk.copy()
-            items["store"] = f"Store {selected_store}"
-            items["predicted_demand"] = items["pred_units"].astype(str) + " / day"
-            items["risk_badge"] = items["risk_level"]
+    items["store"] = f"Store {selected_store}"
+    items["predicted_demand"] = items["pred_units"].astype(str) + " / day"
+    items["risk_badge"] = items["risk_level"]
             items["action"] = np.where(items["risk_level"] == "HIGH", "Promote / Discount",
                                np.where(items["risk_level"] == "MEDIUM", "Monitor", "No Action"))
             show = items[["name", "category", "store", "stock_on_hand", "predicted_demand", "days_left", "risk_badge", "action"]].copy()
