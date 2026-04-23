@@ -327,8 +327,6 @@ def build_button(label: str, key: str, active: bool = False):
         type="primary" if active else "secondary"
     ):
             st.session_state.nav = key
-        st.markdown('</div>', unsafe_allow_html=True)
-
 def render_alerts(risk_df: pd.DataFrame):
     if risk_df.empty:
         st.markdown('<div class="alert-box alert-med">No data available to generate alerts.</div>', unsafe_allow_html=True)
