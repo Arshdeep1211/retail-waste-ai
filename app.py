@@ -491,24 +491,6 @@ customers_default = safe_read("data/customers.csv")
 
 purchases_default = safe_read("data/customer_purchases.csv")
 
-# ---------------- HERO ----------------
-
-st.markdown("""
-
-<div class="hero">
-
-    <div class="hero-title">🧠 Retail AI Copilot</div>
-
-    <p class="hero-sub">
-
-        Inventory intelligence, expiry risk detection, decision support, and demand activation —
-
-        all in one premium control layer for retail operations.
-
-    </p>
-
-</div>
-
 """, unsafe_allow_html=True)
 
 left, right = st.columns([2.2, 1])
