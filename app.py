@@ -12,16 +12,17 @@ from src.recommend import recommend_actions
 
 from src.customer_ai import suggest_campaign
 
-st.set_page_config(
-
-    page_title="Retail AI Copilot",
-
-    page_icon="🧠",
-
-    layout="wide",
-
-    initial_sidebar_state="collapsed"
-
+st.markdown(
+    """
+    <div class="hero">
+        <div class="hero-title">🧠 Retail AI Copilot</div>
+        <p class="hero-sub">
+            Inventory intelligence, expiry risk detection, decision support, and demand activation —
+            all in one premium control layer for retail operations.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 st.markdown("""
