@@ -763,12 +763,9 @@ with main_col:
             st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
+# BOTTOM TABLE
 
-        # BOTTOM TABLE
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
-
-      st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
 
 if not risk.empty:
@@ -781,6 +778,7 @@ if not risk.empty:
         """,
         unsafe_allow_html=True
     )
+
     items = risk.copy()
     items["store"] = f"Store {selected_store}"
     items["predicted_demand"] = items["pred_units"].astype(str) + " / day"
@@ -806,40 +804,4 @@ if not risk.empty:
 else:
     st.info("No items available.")
 
-st.markdown('</div>', unsafe_allow_html=True)      st.info("No items available.")
-        st.markdown('</div>', unsafe_allow_html=True)
-    elif st.session_state.nav == "Upload Data":
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="section-title">Upload Data</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-sub">Upload operational files to simulate a live software workflow.</div>', unsafe_allow_html=True)
-        u1, u2, u3 = st.columns(3)
-        with u1:
-            st.file_uploader("Upload Sales CSV", type=["csv"])
-        with u2:
-            st.file_uploader("Upload Inventory CSV", type=["csv"])
-        with u3:
-            st.file_uploader("Upload Product Master CSV", type=["csv"])
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    elif st.session_state.nav in ["Chat with AI", "Recommendations"]:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="section-title">AI Copilot Workspace</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-sub">Ask natural-language questions and get inventory-aware guidance.</div>', unsafe_allow_html=True)
-
-        for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
-
-        q = st.chat_input("Ask your copilot about stock, ordering, or waste...")
-        if q:
-            st.session_state.chat_history.append({"role": "user", "content": q})
-            a = copilot_answer(q, forecast, risk, recommend)
-            st.session_state.chat_history.append({"role": "assistant", "content": a})
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    else:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="section-title">{st.session_state.nav}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-sub">This section can be expanded next.</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
