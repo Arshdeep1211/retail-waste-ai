@@ -26,7 +26,6 @@ if "chat_history" not in st.session_state:
     ]
 
 # ---------- STYLE ----------
-}
 st.markdown("""
 <style>
 :root{
