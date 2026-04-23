@@ -211,7 +211,7 @@ section[data-testid="stSidebar"]{display:none;}
     background:linear-gradient(180deg, rgba(12,22,40,0.95), rgba(10,18,34,0.98));
     border:1px solid var(--line);
     border-radius:22px;
-    padding:18px;
+    padding:16px 18px;
     box-shadow:0 10px 30px rgba(0,0,0,.18);
     height:100%;
 }
@@ -335,6 +335,14 @@ div[data-testid="stButton"] > button[kind="primary"] {
     background: linear-gradient(90deg, rgba(92,124,255,0.22), rgba(122,92,255,0.16));
     border: 1px solid rgba(92,124,255,0.35);
     color: white;
+}
+.card, .kpi-card {
+    transition: all 0.25s ease;
+}
+
+.card:hover, .kpi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -640,7 +648,7 @@ with main_col:
                     margin=dict(l=10, r=10, t=10, b=10),
                     coloraxis_showscale=False
                 )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
             else:
                 st.info("No forecast available.")
             st.markdown('</div>', unsafe_allow_html=True)
@@ -649,7 +657,7 @@ with main_col:
             st.markdown('<div class="card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Sales vs Forecast</div>', unsafe_allow_html=True)
             fig_sv = sales_vs_forecast_chart(forecast)
-            st.plotly_chart(fig_sv, use_container_width=True)
+            st.plotly_chart(fig_sv, use_container_width=True, config={"displayModeBar": False})
             st.markdown('</div>', unsafe_allow_html=True)
 
         with c3:
@@ -666,7 +674,7 @@ with main_col:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ROW 3
-        c4, c5, c6, c7 = st.columns([1.6, 1.5, 1.5, 1.8])
+        c4, c5, c6, c7 = st.columns([1.25, 1.25, 1.35, 1.55], gap="medium")
 
         with c4:
             st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -690,7 +698,7 @@ with main_col:
                 margin=dict(l=10, r=10, t=10, b=10),
                 showlegend=True
             )
-            st.plotly_chart(fig_cat, use_container_width=True)
+            st.plotly_chart(fig_cat, use_container_width=True, config={"displayModeBar": False})
             st.markdown('</div>', unsafe_allow_html=True)
 
         with c5:
@@ -717,7 +725,7 @@ with main_col:
                     font_color="white",
                     margin=dict(l=10, r=10, t=10, b=10)
                 )
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, use_container_width=True, config={"displayModeBar": False})
             else:
                 st.info("No risk distribution available.")
             st.markdown('</div>', unsafe_allow_html=True)
@@ -726,7 +734,7 @@ with main_col:
             st.markdown('<div class="card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Inventory Health</div>', unsafe_allow_html=True)
             fig_inv = inventory_health_chart(risk)
-            st.plotly_chart(fig_inv, use_container_width=True)
+            st.plotly_chart(fig_inv, use_container_width=True, config={"displayModeBar": False})
             st.markdown('</div>', unsafe_allow_html=True)
 
         with c7:
@@ -759,9 +767,18 @@ with main_col:
         # BOTTOM TABLE
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
+            if not risk.empty:
+    st.markdown(
+        f"""
+        <div class="alert-box alert-good">
+            {len(risk)} items monitored • {high_count} high risk • Store {selected_store} active
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    if not risk.empty:
 
-        if not risk.empty:
-            items = risk.copy()
+    items = risk.copy()
             items["store"] = f"Store {selected_store}"
             items["predicted_demand"] = items["pred_units"].astype(str) + " / day"
             items["risk_badge"] = items["risk_level"]
