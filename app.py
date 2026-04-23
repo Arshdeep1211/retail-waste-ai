@@ -26,6 +26,34 @@ if "chat_history" not in st.session_state:
     ]
 
 # ---------- STYLE ----------
+div[data-testid="stButton"] > button {
+    background: rgba(255,255,255,0.03);
+    color: #d8e1ff;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    height: 46px;
+    width: 100%;
+    text-align: left;
+    font-weight: 600;
+    box-shadow: none;
+}
+
+div[data-testid="stButton"] > button:hover {
+    background: rgba(92,124,255,0.14);
+    border: 1px solid rgba(92,124,255,0.32);
+    color: white;
+}
+
+div[data-testid="stButton"] > button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stButton"] > button[kind="primary"] {
+    background: linear-gradient(90deg, rgba(92,124,255,0.22), rgba(122,92,255,0.16));
+    border: 1px solid rgba(92,124,255,0.35);
+    color: white;
+}
 st.markdown("""
 <style>
 :root{
