@@ -1,4 +1,4 @@
-sku,stock_on_hand
+store_id,sku,stock_on_hand
 milk,20
 yogurt,15
 meat,10
