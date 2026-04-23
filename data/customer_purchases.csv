@@ -1,0 +1,6 @@
+customer_id,sku,category
+1,milk,dairy
+1,yogurt,dairy
+2,meat,protein
+3,milk,dairy
+4,lentils,non_perishable
