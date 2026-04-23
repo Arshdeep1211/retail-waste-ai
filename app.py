@@ -767,7 +767,6 @@ with main_col:
         # BOTTOM TABLE
         st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
-
 if not risk.empty:
     st.markdown(
         f"""
@@ -777,7 +776,6 @@ if not risk.empty:
         """,
         unsafe_allow_html=True
     )
-
 if not risk.empty:
     items = risk.copy()
             items["store"] = f"Store {selected_store}"
@@ -791,7 +789,6 @@ if not risk.empty:
         else:
             st.info("No items available.")
         st.markdown('</div>', unsafe_allow_html=True)
-
     elif st.session_state.nav == "Upload Data":
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Upload Data</div>', unsafe_allow_html=True)
