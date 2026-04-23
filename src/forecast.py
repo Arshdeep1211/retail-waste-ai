@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 def forecast_next_day(sales: pd.DataFrame, store_id: int, lookback_days: int = 3) -> pd.DataFrame:
     store_sales = sales[sales["store_id"] == store_id].copy()
     store_sales = store_sales.sort_values(["sku", "date"])
@@ -9,10 +8,7 @@ def forecast_next_day(sales: pd.DataFrame, store_id: int, lookback_days: int = 3
 
     for sku, group in store_sales.groupby("sku"):
         recent = group.tail(lookback_days)
-        pred_units = recent["units_sold"].mean()
-
-        if pd.isna(pred_units):
-            pred_units = 0
+        pred_units = max(recent["units_sold"].mean(), 0)
 
         forecasts.append({
             "sku": sku,
