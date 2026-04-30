@@ -360,6 +360,98 @@ def safe_read(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize uploaded CSV columns so users can upload practical store files."""
+    df = df.copy()
+    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+
+    rename = {
+        "product_id": "sku",
+        "product": "name",
+        "item": "name",
+        "item_name": "name",
+        "product_name": "name",
+        "stock": "stock_on_hand",
+        "inventory": "stock_on_hand",
+        "current_stock": "stock_on_hand",
+        "stock_onhand": "stock_on_hand",
+        "sales": "units_sold",
+        "sold": "units_sold",
+        "daily_sales": "units_sold",
+        "daily_demand": "avg_daily_sales",
+        "avg_sales": "avg_daily_sales",
+        "average_daily_sales": "avg_daily_sales",
+        "demand": "avg_daily_sales",
+        "shelf_life": "shelf_life_days",
+        "shelf_life_day": "shelf_life_days",
+        "days_left": "shelf_life_days",
+        "expiry_days": "shelf_life_days",
+        "store": "store_id",
+    }
+
+    return df.rename(columns={c: rename.get(c, c) for c in df.columns})
+
+
+def split_uploaded_file(df: pd.DataFrame):
+    """
+    Convert one simple uploaded store CSV into the three internal datasets:
+    sales, inventory, products.
+
+    Minimum accepted columns:
+    sku/name/category/stock_on_hand/shelf_life_days/avg_daily_sales
+    The function also works with common aliases such as product, item, stock,
+    shelf_life, daily_demand, and sales.
+    """
+    df = standardize_columns(df)
+
+    if "store_id" not in df.columns:
+        df["store_id"] = 1
+    if "sku" not in df.columns:
+        df["sku"] = [f"SKU_{i+1}" for i in range(len(df))]
+    if "name" not in df.columns:
+        df["name"] = df["sku"].astype(str)
+    if "category" not in df.columns:
+        df["category"] = "General"
+    if "shelf_life_days" not in df.columns:
+        df["shelf_life_days"] = 5
+    if "stock_on_hand" not in df.columns:
+        df["stock_on_hand"] = 20
+    if "avg_daily_sales" not in df.columns and "units_sold" not in df.columns:
+        df["avg_daily_sales"] = 5
+
+    df["sku"] = df["sku"].astype(str)
+    df["store_id"] = pd.to_numeric(df["store_id"], errors="coerce").fillna(1).astype(int)
+    df["stock_on_hand"] = pd.to_numeric(df["stock_on_hand"], errors="coerce").fillna(0)
+    df["shelf_life_days"] = pd.to_numeric(df["shelf_life_days"], errors="coerce").fillna(5).astype(int)
+
+    products = df[["sku", "name", "category", "shelf_life_days"]].drop_duplicates("sku")
+    inventory = df[["store_id", "sku", "stock_on_hand"]].drop_duplicates(["store_id", "sku"])
+
+    # If uploaded CSV already has daily sales history, use it.
+    if "date" in df.columns and "units_sold" in df.columns:
+        sales = df[["date", "store_id", "sku", "units_sold"]].copy()
+        sales["units_sold"] = pd.to_numeric(sales["units_sold"], errors="coerce").fillna(0)
+    else:
+        # Otherwise generate a small 14-day sales history from avg_daily_sales
+        # so the forecasting engine can run immediately.
+        rows = []
+        base_date = pd.Timestamp.today().normalize()
+        for _, row in df.drop_duplicates("sku").iterrows():
+            avg = row.get("avg_daily_sales", row.get("units_sold", 5))
+            avg = float(pd.to_numeric(pd.Series([avg]), errors="coerce").fillna(5).iloc[0])
+            for d in range(14):
+                multiplier = [0.9, 1.0, 1.05, 0.95, 1.15, 1.25, 0.85][d % 7]
+                rows.append({
+                    "date": (base_date - pd.Timedelta(days=d)).strftime("%Y-%m-%d"),
+                    "store_id": int(row.get("store_id", 1)),
+                    "sku": str(row["sku"]),
+                    "units_sold": round(avg * multiplier, 2),
+                })
+        sales = pd.DataFrame(rows)
+
+    return sales, inventory, products
+
+
 def build_button(label: str, key: str, active: bool = False):
     if st.button(
         label,
@@ -587,9 +679,9 @@ products_default = safe_read("data/products.csv")
 customers_default = safe_read("data/customers.csv")
 purchases_default = safe_read("data/customer_purchases.csv")
 
-sales = sales_default.copy()
-inventory = inventory_default.copy()
-products = products_default.copy()
+sales = st.session_state.get("uploaded_sales", sales_default.copy())
+inventory = st.session_state.get("uploaded_inventory", inventory_default.copy())
+products = st.session_state.get("uploaded_products", products_default.copy())
 customers = customers_default.copy()
 purchases = purchases_default.copy()
 
@@ -613,7 +705,7 @@ if not forecast.empty and not inventory_store.empty and not products.empty:
         risk["action"] = risk.apply(get_action_text, axis=1)
 
     if not customers.empty and not purchases.empty:
-        campaigns = suggest_campaign(recommend, customers, purchases)
+        campaigns = suggest_campaign(risk, customers, purchases)
     else:
         campaigns = pd.DataFrame()
 else:
@@ -682,6 +774,7 @@ with main_col:
     with top_left:
         st.markdown('<div class="greeting">Good evening, Alex 👋</div>', unsafe_allow_html=True)
         st.markdown('<div class="greeting-sub">Here’s what’s happening with your stores today.</div>', unsafe_allow_html=True)
+        st.markdown('<div style="color:#9aa8c8; font-size:14px; margin-top:6px;">AI Copilot that tells you what to order, what will go to waste, and what actions to take.</div>', unsafe_allow_html=True)
     with top_right:
         c1, c2 = st.columns(2)
         with c1:
@@ -999,6 +1092,60 @@ with main_col:
             st.metric("Estimated Saving", f"€{waste_saved:,.0f}")
         with i4:
             st.metric("Waste Reduction", "30%")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif st.session_state.nav == "Upload Data":
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">⤴️ Upload Store Data</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">Upload a CSV and let the AI analyze demand, waste risk, ordering, actions, and customer activation.</div><br>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="alert-box alert-blue">
+            Accepted simple CSV columns: <b>sku, name, category, stock_on_hand, shelf_life_days, avg_daily_sales</b>.<br>
+            You can also use aliases like product, item, stock, shelf_life, daily_demand, sales.
+        </div>
+        """, unsafe_allow_html=True)
+
+        uploaded_file = st.file_uploader("Upload your store CSV", type=["csv"])
+
+        sample = pd.DataFrame([
+            {"sku": "MILK_1", "name": "Fresh Milk", "category": "Dairy", "stock_on_hand": 42, "shelf_life_days": 3, "avg_daily_sales": 12},
+            {"sku": "BREAD_1", "name": "Sourdough Bread", "category": "Bakery", "stock_on_hand": 28, "shelf_life_days": 1, "avg_daily_sales": 18},
+            {"sku": "CHICKEN_1", "name": "Chicken Breast", "category": "Meat", "stock_on_hand": 18, "shelf_life_days": 2, "avg_daily_sales": 6},
+            {"sku": "YOGURT_1", "name": "Natural Yogurt", "category": "Dairy", "stock_on_hand": 35, "shelf_life_days": 4, "avg_daily_sales": 7},
+            {"sku": "BANANA_1", "name": "Banana", "category": "Produce", "stock_on_hand": 50, "shelf_life_days": 5, "avg_daily_sales": 10},
+        ])
+
+        with st.expander("See sample upload format"):
+            st.dataframe(sample, use_container_width=True, hide_index=True)
+
+        if uploaded_file is not None:
+            raw_df = pd.read_csv(uploaded_file)
+            st.markdown('<div class="section-title">Preview</div>', unsafe_allow_html=True)
+            st.dataframe(raw_df.head(10), use_container_width=True)
+
+            if st.button("Analyze File", use_container_width=True, type="primary"):
+                sales_new, inventory_new, products_new = split_uploaded_file(raw_df)
+
+                st.session_state["uploaded_sales"] = sales_new
+                st.session_state["uploaded_inventory"] = inventory_new
+                st.session_state["uploaded_products"] = products_new
+
+                st.session_state.chat_history = [
+                    {"role": "assistant", "content": "Uploaded file analyzed. Ask me what to order, what will go to waste, what actions to take, or which campaign to run."}
+                ]
+
+                st.success("File processed successfully. Go back to Overview to see the updated AI dashboard.")
+                st.session_state.nav = "Overview"
+                st.rerun()
+
+        if "uploaded_sales" in st.session_state:
+            if st.button("Reset to demo data", use_container_width=True):
+                for k in ["uploaded_sales", "uploaded_inventory", "uploaded_products"]:
+                    st.session_state.pop(k, None)
+                st.success("Reset complete. Demo data restored.")
+                st.rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
 
