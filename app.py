@@ -705,7 +705,7 @@ if not forecast.empty and not inventory_store.empty and not products.empty:
         risk["action"] = risk.apply(get_action_text, axis=1)
 
     if not customers.empty and not purchases.empty:
-        campaigns = suggest_campaign(risk, customers, purchases)
+        campaigns = suggest_campaign(recommend, customers, purchases)
     else:
         campaigns = pd.DataFrame()
 else:
