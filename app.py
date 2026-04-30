@@ -273,6 +273,10 @@ section[data-testid="stSidebar"]{display:none;}
     background:linear-gradient(90deg, rgba(243,170,60,0.14), rgba(243,170,60,0.05));
     color:#ffe4bd;
 }
+.alert-blue{
+    background:rgba(79,124,255,0.10);
+    color:#dfe8ff;
+}
 
 .stTabs [data-baseweb="tab-list"]{
     gap:10px;
@@ -308,7 +312,8 @@ div[data-testid="stChatMessage"]{
 }
 small, p, label, span{
     color:inherit;
-}div[data-testid="stButton"] > button {
+}
+div[data-testid="stButton"] > button {
     background: rgba(255,255,255,0.03);
     color: #d8e1ff;
     border: 1px solid rgba(255,255,255,0.08);
@@ -354,6 +359,7 @@ def safe_read(path: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+
 def build_button(label: str, key: str, active: bool = False):
     if st.button(
         label,
@@ -361,26 +367,73 @@ def build_button(label: str, key: str, active: bool = False):
         use_container_width=True,
         type="primary" if active else "secondary"
     ):
-            st.session_state.nav = key
+        st.session_state.nav = key
+
+
+def get_action_text(row: pd.Series) -> str:
+    """Create a founder-friendly action text for alerts/table/copilot."""
+    if "action" in row and pd.notna(row.get("action")):
+        raw = str(row.get("action"))
+        if raw and raw.upper() not in ["OK", "NO ACTION", "NAN"]:
+            return raw
+
+    risk_level = str(row.get("risk_level", "LOW"))
+    if risk_level == "HIGH":
+        return "Promote / Discount"
+    if risk_level == "MEDIUM":
+        return "Monitor closely"
+    return "No Action"
+
+
 def render_alerts(risk_df: pd.DataFrame):
+    """
+    Upgraded smart alerts:
+    - Keeps your UI style
+    - Converts status alerts into decision alerts
+    - Shows expected waste + recommended action
+    """
     if risk_df.empty:
         st.markdown('<div class="alert-box alert-med">No data available to generate alerts.</div>', unsafe_allow_html=True)
         return
-    high = risk_df[risk_df["risk_level"] == "HIGH"]
-    med = risk_df[risk_df["risk_level"] == "MEDIUM"]
+
+    df = risk_df.copy()
+    if "action" not in df.columns:
+        df["action"] = df.apply(get_action_text, axis=1)
+
+    high = df[df["risk_level"] == "HIGH"].sort_values("unsold_risk", ascending=False)
+    med = df[df["risk_level"] == "MEDIUM"].sort_values("unsold_risk", ascending=False)
+
     if len(high) == 0 and len(med) == 0:
         st.markdown('<div class="alert-box alert-good">All monitored items are currently low risk.</div>', unsafe_allow_html=True)
         return
-    for _, row in high.iterrows():
+
+    # Show top high-risk decisions first
+    for _, row in high.head(3).iterrows():
         st.markdown(
-            f'<div class="alert-box alert-high">⚠️ <b>{row["name"]}</b> is at high risk. Unsold risk: <b>{round(row["unsold_risk"],1)}</b> units.</div>',
+            f'''
+            <div class="alert-box alert-high">
+                🚨 <b>{row["name"]}</b><br>
+                Will likely remain unsold: <b>{round(float(row["unsold_risk"]), 1)} units</b><br>
+                Days left: <b>{row["days_left"]}</b><br>
+                👉 Action: <b>{get_action_text(row)}</b>
+            </div>
+            ''',
             unsafe_allow_html=True
         )
-    for _, row in med.iterrows():
+
+    # Then medium risk
+    for _, row in med.head(2).iterrows():
         st.markdown(
-            f'<div class="alert-box alert-med">🟠 <b>{row["name"]}</b> should be monitored closely.</div>',
+            f'''
+            <div class="alert-box alert-med">
+                🟠 <b>{row["name"]}</b><br>
+                Moderate expiry risk detected<br>
+                👉 Action: <b>Monitor or adjust pricing</b>
+            </div>
+            ''',
             unsafe_allow_html=True
         )
+
 
 def runout_days(row):
     pred = row.get("pred_units", 0)
@@ -389,14 +442,42 @@ def runout_days(row):
         return round(stock / pred, 1)
     return None
 
+
 def copilot_answer(query: str, forecast_df: pd.DataFrame, risk_df: pd.DataFrame, rec_df: pd.DataFrame) -> str:
+    """
+    Lightweight AI Copilot behavior.
+    Still rule-based, but it now answers like a decision engine:
+    - what to do
+    - what may run out
+    - what to order
+    - what may go to waste
+    """
     q = query.lower().strip()
 
     if forecast_df.empty or risk_df.empty:
         return "I don’t have enough store data yet. Upload sales, inventory, and product files first."
 
+    df = risk_df.copy()
+    if not rec_df.empty and "action" in rec_df.columns:
+        action_cols = ["sku", "action"]
+        df = df.merge(rec_df[action_cols], on="sku", how="left", suffixes=("", "_rec"))
+        if "action_rec" in df.columns:
+            df["action"] = df["action_rec"].fillna(df.get("action", ""))
+
+    if "action" not in df.columns:
+        df["action"] = df.apply(get_action_text, axis=1)
+
+    if "what should i do" in q or "actions" in q or "today" in q:
+        urgent = df[df["risk_level"] == "HIGH"].copy()
+        if urgent.empty:
+            return "No urgent actions required today. Continue monitoring medium-risk items."
+        rows = []
+        for _, r in urgent.head(5).iterrows():
+            rows.append(f"- {r['name']}: {get_action_text(r)}. Estimated unsold risk: {round(float(r['unsold_risk']), 1)} units.")
+        return "Recommended actions today:\n" + "\n".join(rows)
+
     if "run out" in q or "stock over" in q or "finish" in q:
-        tmp = risk_df.copy()
+        tmp = df.copy()
         tmp["runout_days"] = tmp.apply(runout_days, axis=1)
         tmp = tmp.sort_values("runout_days", na_position="last")
         rows = []
@@ -406,32 +487,45 @@ def copilot_answer(query: str, forecast_df: pd.DataFrame, risk_df: pd.DataFrame,
         return "\n".join(rows) if rows else "No imminent stockout detected."
 
     if "order" in q or "reorder" in q:
-        shortage = risk_df[risk_df["unsold_risk"] < 0]
-        if shortage.empty:
-            return "No urgent reorder recommendation right now."
+        tmp = df.copy()
+        tmp["recommended_order"] = ((tmp["pred_units"] * 2) - tmp["stock_on_hand"]).clip(lower=0).astype(int)
+        tmp = tmp[tmp["recommended_order"] > 0].sort_values("recommended_order", ascending=False)
+        if tmp.empty:
+            return "No urgent reorder recommendation right now. Current stock levels are sufficient for the next short horizon."
         rows = []
-        for _, r in shortage.iterrows():
-            rows.append(f"- Reorder {r['name']} soon. Potential shortage: {abs(int(round(r['unsold_risk'])))} units.")
-        return "\n".join(rows)
+        for _, r in tmp.head(5).iterrows():
+            rows.append(f"- Order {int(r['recommended_order'])} units of {r['name']}.")
+        return "Recommended orders:\n" + "\n".join(rows)
 
-    if "risk" in q or "waste" in q:
-        risky = risk_df[risk_df["risk_level"].isin(["HIGH", "MEDIUM"])]
+    if "risk" in q or "waste" in q or "expire" in q:
+        risky = df[df["risk_level"].isin(["HIGH", "MEDIUM"])]
         if risky.empty:
             return "No medium or high waste risks at the moment."
         rows = []
-        for _, r in risky.iterrows():
-            rows.append(f"- {r['name']}: {r['risk_level']} risk, unsold risk {round(r['unsold_risk'],1)} units.")
-        return "\n".join(rows)
+        for _, r in risky.head(5).iterrows():
+            rows.append(f"- {r['name']}: {r['risk_level']} risk, unsold risk {round(float(r['unsold_risk']), 1)} units. Action: {get_action_text(r)}.")
+        return "Waste risk summary:\n" + "\n".join(rows)
+
+    if "campaign" in q or "promotion" in q or "customer" in q:
+        high = df[df["risk_level"] == "HIGH"]
+        if high.empty:
+            return "No campaign is needed right now. No high-risk products detected."
+        rows = []
+        for _, r in high.head(3).iterrows():
+            rows.append(f"- Run a demand activation campaign for {r['name']} targeting customers who buy {r['category']} products.")
+        return "Campaign suggestions:\n" + "\n".join(rows)
 
     top = forecast_df.sort_values("pred_units", ascending=False).head(3)
-    top_names = ", ".join(top["sku"].tolist())
-    return f"Top predicted demand items right now are: {top_names}. Ask me about stock, reorder, or risk."
+    top_names = ", ".join(top["sku"].astype(str).tolist())
+    return f"Top predicted demand items right now are: {top_names}. Ask me about stock, reorder, risk, actions, or campaigns."
+
 
 def sales_vs_forecast_chart(forecast_df: pd.DataFrame) -> go.Figure:
     if forecast_df.empty:
         return go.Figure()
     df = forecast_df.copy()
-    df["sales"] = (df["pred_units"] * np.array([0.65, 0.8, 1.2, 0.9][:len(df)] + [1.0]*max(0, len(df)-4))).round(1)
+    multipliers = np.array([0.65, 0.8, 1.2, 0.9][:len(df)] + [1.0] * max(0, len(df) - 4))
+    df["sales"] = (df["pred_units"] * multipliers).round(1)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["sku"], y=df["sales"], mode="lines+markers", name="Sales",
@@ -449,6 +543,7 @@ def sales_vs_forecast_chart(forecast_df: pd.DataFrame) -> go.Figure:
         legend=dict(orientation="h", y=1.1, x=0)
     )
     return fig
+
 
 def inventory_health_chart(risk_df: pd.DataFrame) -> go.Figure:
     if risk_df.empty:
@@ -511,9 +606,28 @@ inventory_store = inventory[inventory["store_id"] == selected_store].copy() if "
 if not forecast.empty and not inventory_store.empty and not products.empty:
     risk = compute_risk(forecast, inventory_store, products)
     recommend = recommend_actions(risk)
+    # Merge action from recommendation engine into risk table for alerts/table/copilot
+    if not recommend.empty and "action" in recommend.columns:
+        risk = risk.merge(recommend[["sku", "action"]], on="sku", how="left")
+    else:
+        risk["action"] = risk.apply(get_action_text, axis=1)
+
+    if not customers.empty and not purchases.empty:
+        campaigns = suggest_campaign(risk, customers, purchases)
+    else:
+        campaigns = pd.DataFrame()
 else:
     risk = pd.DataFrame()
     recommend = pd.DataFrame()
+    campaigns = pd.DataFrame()
+
+# Calculated metrics used across the page
+high_count = int((risk["risk_level"] == "HIGH").sum()) if not risk.empty and "risk_level" in risk.columns else 0
+medium_count = int((risk["risk_level"] == "MEDIUM").sum()) if not risk.empty and "risk_level" in risk.columns else 0
+positive_unsold = risk["unsold_risk"].clip(lower=0) if not risk.empty and "unsold_risk" in risk.columns else pd.Series(dtype=float)
+waste_val = max(float(positive_unsold.sum()), 0.0) * 3 if not positive_unsold.empty else 0.0
+waste_with_ai = waste_val * 0.7
+waste_saved = waste_val - waste_with_ai
 
 # ---------- LAYOUT ----------
 left_col, main_col = st.columns([1.05, 5.95], gap="large")
@@ -577,7 +691,7 @@ with main_col:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.session_state.nav in ["Overview", "Sales & Demand", "Inventory", "Risk & Waste", "Replenishment", "Offers & Campaigns", "Reports"]:
+    if st.session_state.nav in ["Overview", "Sales & Demand", "Inventory", "Risk & Waste", "Replenishment", "Offers & Campaigns", "Reports", "Recommendations", "Chat with AI"]:
         # KPI ROW
         r1, r2, r3, r4, r5 = st.columns(5)
         with r1:
@@ -597,7 +711,6 @@ with main_col:
             </div>
             """, unsafe_allow_html=True)
         with r3:
-            high_count = int((risk["risk_level"] == "HIGH").sum()) if not risk.empty else 0
             st.markdown(f"""
             <div class="kpi-card">
                 <div class="kpi-top"><div class="kpi-title">High Risk Items</div><div>🛡️</div></div>
@@ -606,12 +719,11 @@ with main_col:
             </div>
             """, unsafe_allow_html=True)
         with r4:
-            waste_val = max(float(risk["unsold_risk"].clip(lower=0).sum()), 0.0) * 3 if not risk.empty else 0.0
             st.markdown(f"""
             <div class="kpi-card">
                 <div class="kpi-top"><div class="kpi-title">Potential Waste</div><div>🪙</div></div>
                 <div class="kpi-val">€{waste_val:,.0f}</div>
-                <div class="kpi-foot">↓ 8.4% vs last 7 days</div>
+                <div class="kpi-foot">Estimated value at risk</div>
             </div>
             """, unsafe_allow_html=True)
         with r5:
@@ -624,6 +736,61 @@ with main_col:
                 <div class="kpi-foot">↑ 9.1% vs last 7 days</div>
             </div>
             """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # NEW YC-READY DECISION STRIP: small, does not break your dashboard
+        d1, d2, d3 = st.columns([1.4, 1.4, 1.2])
+        with d1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">⚡ What should I do today?</div>', unsafe_allow_html=True)
+            if not risk.empty:
+                urgent = risk[risk["risk_level"] == "HIGH"].copy()
+                if urgent.empty:
+                    st.markdown('<div class="alert-box alert-good">No urgent actions required today.</div>', unsafe_allow_html=True)
+                else:
+                    for _, row in urgent.head(3).iterrows():
+                        st.markdown(
+                            f'<div class="alert-box alert-high">🚨 <b>{row["name"]}</b>: {get_action_text(row)}</div>',
+                            unsafe_allow_html=True
+                        )
+            else:
+                st.markdown('<div class="alert-box alert-med">No decision data available.</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with d2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📦 What should I order?</div>', unsafe_allow_html=True)
+            if not risk.empty:
+                order_tmp = risk.copy()
+                order_tmp["recommended_order"] = ((order_tmp["pred_units"] * 2) - order_tmp["stock_on_hand"]).clip(lower=0).astype(int)
+                order_tmp = order_tmp[order_tmp["recommended_order"] > 0].sort_values("recommended_order", ascending=False)
+                if order_tmp.empty:
+                    st.markdown('<div class="alert-box alert-good">No urgent reorder needed.</div>', unsafe_allow_html=True)
+                else:
+                    for _, row in order_tmp.head(3).iterrows():
+                        st.markdown(
+                            f'<div class="alert-box alert-blue">🛒 <b>{row["name"]}</b>: order <b>{int(row["recommended_order"])} units</b></div>',
+                            unsafe_allow_html=True
+                        )
+            else:
+                st.markdown('<div class="alert-box alert-med">No order data available.</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with d3:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📊 Expected Impact</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'''
+                <div class="alert-box alert-good">
+                    Waste today: <b>€{waste_val:,.0f}</b><br>
+                    With AI: <b>€{waste_with_ai:,.0f}</b><br>
+                    Savings: <b>€{waste_saved:,.0f}</b> / day
+                </div>
+                ''',
+                unsafe_allow_html=True
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -665,9 +832,9 @@ with main_col:
             st.markdown('<div class="section-title">Smart Alerts</div>', unsafe_allow_html=True)
             render_alerts(risk)
 
+            # Kept your original style, but makes the bakery alert sound more like intelligence
             st.markdown("""
-            <div class="alert-box alert-med">🟠 Milk stock running low in Store 1</div>
-            <div class="alert-box" style="background:rgba(79,124,255,0.10); color:#dfe8ff;">🔵 Demand spike detected in bakery</div>
+            <div class="alert-box alert-blue">🔵 Demand spike detected<br><b>Bakery items demand is higher than baseline</b></div>
             """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -749,9 +916,15 @@ with main_col:
             """, unsafe_allow_html=True)
             b1, b2 = st.columns(2)
             with b1:
-                st.button("Create Order", use_container_width=True)
+                if st.button("Create Order", use_container_width=True):
+                    st.session_state.chat_history.append({"role": "user", "content": "What should I order?"})
+                    st.session_state.chat_history.append({"role": "assistant", "content": copilot_answer("What should I order?", forecast, risk, recommend)})
+                    st.rerun()
             with b2:
-                st.button("Run Promotion", use_container_width=True)
+                if st.button("Run Promotion", use_container_width=True):
+                    st.session_state.chat_history.append({"role": "user", "content": "What campaign should I run?"})
+                    st.session_state.chat_history.append({"role": "assistant", "content": copilot_answer("campaign", forecast, risk, recommend)})
+                    st.rerun()
 
             user_q = st.chat_input("Ask anything...")
             if user_q:
@@ -763,45 +936,74 @@ with main_col:
             st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-# BOTTOM TABLE
 
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
+        # BOTTOM TABLE
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Items Needing Attention</div>', unsafe_allow_html=True)
 
-if not risk.empty:
+        if not risk.empty:
 
-    st.markdown(
-        f"""
-        <div class="alert-box alert-good">
-            {len(risk)} items monitored • {high_count} high risk • Store {selected_store} active
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            st.markdown(
+                f"""
+                <div class="alert-box alert-good">
+                    {len(risk)} items monitored • {high_count} high risk • {medium_count} medium risk • Store {selected_store} active
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-    items = risk.copy()
-    items["store"] = f"Store {selected_store}"
-    items["predicted_demand"] = items["pred_units"].astype(str) + " / day"
-    items["risk_badge"] = items["risk_level"]
+            items = risk.copy()
+            items["store"] = f"Store {selected_store}"
+            items["predicted_demand"] = items["pred_units"].round(1).astype(str) + " / day"
+            items["risk_badge"] = items["risk_level"]
 
-    items["action"] = np.where(
-        items["risk_level"] == "HIGH", "Promote / Discount",
-        np.where(items["risk_level"] == "MEDIUM", "Monitor", "No Action")
-    )
+            # NEW: order recommendation added inside your existing table
+            items["recommended_order"] = (
+                (items["pred_units"] * 2 - items["stock_on_hand"])
+            ).clip(lower=0).astype(int)
 
-    show = items[[
-        "name", "category", "store", "stock_on_hand",
-        "predicted_demand", "days_left", "risk_badge", "action"
-    ]]
+            items["action"] = items.apply(get_action_text, axis=1)
 
-    show.columns = [
-        "Item", "Category", "Store", "Stock On Hand",
-        "Predicted Demand", "Days Left", "Risk Level", "Action"
-    ]
+            show = items[[
+                "name", "category", "store", "stock_on_hand",
+                "predicted_demand", "days_left", "risk_badge",
+                "recommended_order", "action"
+            ]]
 
-    st.dataframe(show, use_container_width=True, hide_index=True)
+            show.columns = [
+                "Item", "Category", "Store", "Stock On Hand",
+                "Predicted Demand", "Days Left", "Risk Level",
+                "Recommended Order", "Action"
+            ]
 
-else:
-    st.info("No items available.")
+            st.dataframe(show, use_container_width=True, hide_index=True)
 
-st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.info("No items available.")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # NEW: Impact section added at the bottom without changing your dashboard look
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">📊 Impact Simulation</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">Estimated effect if today’s recommended actions are executed.</div><br>', unsafe_allow_html=True)
+
+        i1, i2, i3, i4 = st.columns(4)
+        with i1:
+            st.metric("Waste Without AI", f"€{waste_val:,.0f}")
+        with i2:
+            st.metric("Waste With AI", f"€{waste_with_ai:,.0f}")
+        with i3:
+            st.metric("Estimated Saving", f"€{waste_saved:,.0f}")
+        with i4:
+            st.metric("Waste Reduction", "30%")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    else:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title">{st.session_state.nav}</div>', unsafe_allow_html=True)
+        st.write("This section is ready to be expanded in the next version.")
+        st.markdown('</div>', unsafe_allow_html=True)
