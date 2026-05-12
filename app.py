@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from openai import OpenAI
 
 from src.forecast import forecast_next_day
 from src.risk import compute_risk
