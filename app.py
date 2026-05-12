@@ -355,16 +355,18 @@ div[data-testid="stButton"] > button[kind="primary"] {
 
 # ---------- HELPERS ----------
 def safe_read(path: str) -> pd.DataFrame:
-    def get_openai_client():
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
+
+
+def get_openai_client():
     try:
         api_key = st.secrets["OPENAI_API_KEY"]
         return OpenAI(api_key=api_key)
     except Exception:
         return None
-    try:
-        return pd.read_csv(path)
-    except Exception:
-        return pd.DataFrame()
 
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
