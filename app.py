@@ -541,82 +541,70 @@ def runout_days(row):
         return round(stock / pred, 1)
     return None
 
-
 def copilot_answer(query: str, forecast_df: pd.DataFrame, risk_df: pd.DataFrame, rec_df: pd.DataFrame) -> str:
-    """
-    Lightweight AI Copilot behavior.
-    Still rule-based, but it now answers like a decision engine:
-    - what to do
-    - what may run out
-    - what to order
-    - what may go to waste
-    """
-    q = query.lower().strip()
+
+    client = get_openai_client()
 
     if forecast_df.empty or risk_df.empty:
-        return "I don’t have enough store data yet. Upload sales, inventory, and product files first."
+        return "Upload store data first so I can analyze your inventory."
 
-    df = risk_df.copy()
-    if not rec_df.empty and "action" in rec_df.columns:
-        action_cols = ["sku", "action"]
-        df = df.merge(rec_df[action_cols], on="sku", how="left", suffixes=("", "_rec"))
-        if "action_rec" in df.columns:
-            df["action"] = df["action_rec"].fillna(df.get("action", ""))
+    forecast_context = forecast_df.head(10).to_dict(orient="records")
+    risk_context = risk_df.head(10).to_dict(orient="records")
 
-    if "action" not in df.columns:
-        df["action"] = df.apply(get_action_text, axis=1)
+    rec_context = []
+    if not rec_df.empty:
+        rec_context = rec_df.head(10).to_dict(orient="records")
 
-    if "what should i do" in q or "actions" in q or "today" in q:
-        urgent = df[df["risk_level"] == "HIGH"].copy()
-        if urgent.empty:
-            return "No urgent actions required today. Continue monitoring medium-risk items."
-        rows = []
-        for _, r in urgent.head(5).iterrows():
-            rows.append(f"- {r['name']}: {get_action_text(r)}. Estimated unsold risk: {round(float(r['unsold_risk']), 1)} units.")
-        return "Recommended actions today:\n" + "\n".join(rows)
+    system_prompt = f"""
+    You are Retail AI Copilot.
 
-    if "run out" in q or "stock over" in q or "finish" in q:
-        tmp = df.copy()
-        tmp["runout_days"] = tmp.apply(runout_days, axis=1)
-        tmp = tmp.sort_values("runout_days", na_position="last")
-        rows = []
-        for _, r in tmp.head(3).iterrows():
-            if pd.notna(r["runout_days"]):
-                rows.append(f"- {r['name']} may run out in about {r['runout_days']} days.")
-        return "\n".join(rows) if rows else "No imminent stockout detected."
+    You help grocery store managers optimize:
+    - ordering
+    - waste reduction
+    - stock management
+    - promotions
 
-    if "order" in q or "reorder" in q:
-        tmp = df.copy()
-        tmp["recommended_order"] = ((tmp["pred_units"] * 2) - tmp["stock_on_hand"]).clip(lower=0).astype(int)
-        tmp = tmp[tmp["recommended_order"] > 0].sort_values("recommended_order", ascending=False)
-        if tmp.empty:
-            return "No urgent reorder recommendation right now. Current stock levels are sufficient for the next short horizon."
-        rows = []
-        for _, r in tmp.head(5).iterrows():
-            rows.append(f"- Order {int(r['recommended_order'])} units of {r['name']}.")
-        return "Recommended orders:\n" + "\n".join(rows)
+    Forecast Data:
+    {forecast_context}
 
-    if "risk" in q or "waste" in q or "expire" in q:
-        risky = df[df["risk_level"].isin(["HIGH", "MEDIUM"])]
-        if risky.empty:
-            return "No medium or high waste risks at the moment."
-        rows = []
-        for _, r in risky.head(5).iterrows():
-            rows.append(f"- {r['name']}: {r['risk_level']} risk, unsold risk {round(float(r['unsold_risk']), 1)} units. Action: {get_action_text(r)}.")
-        return "Waste risk summary:\n" + "\n".join(rows)
+    Risk Data:
+    {risk_context}
 
-    if "campaign" in q or "promotion" in q or "customer" in q:
-        high = df[df["risk_level"] == "HIGH"]
-        if high.empty:
-            return "No campaign is needed right now. No high-risk products detected."
-        rows = []
-        for _, r in high.head(3).iterrows():
-            rows.append(f"- Run a demand activation campaign for {r['name']} targeting customers who buy {r['category']} products.")
-        return "Campaign suggestions:\n" + "\n".join(rows)
+    Recommendation Data:
+    {rec_context}
 
-    top = forecast_df.sort_values("pred_units", ascending=False).head(3)
-    top_names = ", ".join(top["sku"].astype(str).tolist())
-    return f"Top predicted demand items right now are: {top_names}. Ask me about stock, reorder, risk, actions, or campaigns."
+    Rules:
+    - Give concise operational advice.
+    - Mention product names.
+    - Focus on actions.
+    - Do not invent fake data.
+    """
+
+    if client is None:
+        return "OpenAI API key is not configured."
+
+    try:
+
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": query
+                }
+            ],
+            temperature=0.2,
+            max_tokens=300
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"AI Error: {str(e)}"
 
 
 def sales_vs_forecast_chart(forecast_df: pd.DataFrame) -> go.Figure:
